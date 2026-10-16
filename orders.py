@@ -5,87 +5,102 @@ import auth
 
 TAX = 0.15
 
+ORDER_LOG = []
+SHIPPING_RATES = {
+    "express": 10,
+    "standard": 3,
+}
+COUPON_RATES = {
+    "WELCOME10": 0.9,
+    "BLACKFRIDAY": 0.5,
+    "STAFF": 0.7,
+}
 
-def process_order(token, items, coupon=None, shipping="standard", log=[]):
+
+def _apply_coupon(total, coupon):
+    if not coupon:
+        return total
+    return total * COUPON_RATES.get(coupon, 1.0)
+
+
+def _process_item(item):
+    book = database.get_book(item["book_id"])
+    if not book:
+        print("Book not found")
+        return 0
+
+    qty = item["qty"]
+    if qty <= 0:
+        print("Invalid quantity")
+        return 0
+
+    stock = book[3]
+    if stock < qty:
+        if stock > 0:
+            print(f"Only {stock} units available for {book[1]}")
+        else:
+            print(f"Book out of stock: {book[1]}")
+        return 0
+
+    database.update_stock(book[0], stock - qty)
+    return book[2] * qty
+
+
+def process_order(token, items, coupon=None, shipping="standard", log=None):
     username = auth.sessions.get(token)
-    if username != None:
-        if items == []:
-            print("Empty order")
-            return None
-        total = 0
-        for item in items:
-            book = database.get_book(item["book_id"])
-            if book:
-                if book[3] >= item["qty"]:
-                    if item["qty"] > 0:
-                        total = total + book[2] * item["qty"]
-                        database.update_stock(book[0], book[3] - item["qty"])
-                    else:
-                        print("Invalid quantity")
-                else:
-                    if book[3] > 0:
-                        print("Only " + str(book[3]) + " units available for " + book[1])
-                    else:
-                        print("Book out of stock: " + book[1])
-            else:
-                print("Book not found")
-        if coupon:
-            if coupon == "WELCOME10":
-                total = total * 0.9
-            elif coupon == "BLACKFRIDAY":
-                total = total * 0.5
-            elif coupon == "STAFF":
-                    total = total * 0.7
-        if shipping == "express":
-            total = total + 10
-        elif shipping == "standard":
-            total = total + 3
-        total = total + total * TAX
-        order_id = len(log) + 1
-        database.save_order(order_id, username, total, "PENDING")
-        log.append(order_id)
-        return round(total, 2)
-    else:
+    if not username:
         print("Invalid session")
         return None
+
+    if not items:
+        print("Empty order")
+        return None
+
+    if log is None:
+        log = ORDER_LOG
+
+    total = sum(_process_item(item) for item in items)
+    total = _apply_coupon(total, coupon)
+    total += SHIPPING_RATES.get(shipping, 0)
+    total += total * TAX
+
+    order_id = len(log) + 1
+    database.save_order(order_id, username, total, "PENDING")
+    log.append(order_id)
+    return round(total, 2)
+
+
+def _print_order_details(username, items):
+    print(f"Customer: {username}")
+    subtotal = 0
+    for item in items:
+        book = database.get_book(item["book_id"])
+        line_total = book[2] * item["qty"]
+        subtotal += line_total
+        print(f"{book[1]} x{item['qty']} = {line_total}")
+    tax = subtotal * TAX
+    print(f"Subtotal: {round(subtotal, 2)}")
+    print(f"Tax: {round(tax, 2)}")
+    print(f"Total: {round(subtotal + tax, 2)}")
 
 
 def print_invoice(username, items):
     print("==============================")
     print("BOOKSTORE INVOICE")
-    print("Customer: " + username)
-    subtotal = 0
-    for item in items:
-        book = database.get_book(item["book_id"])
-        line_total = book[2] * item["qty"]
-        subtotal = subtotal + line_total
-        print(book[1] + " x" + str(item["qty"]) + " = " + str(line_total))
-    tax = subtotal * TAX
-    print("Subtotal: " + str(round(subtotal, 2)))
-    print("Tax: " + str(round(tax, 2)))
-    print("Total: " + str(round(subtotal + tax, 2)))
+    _print_order_details(username, items)
 
 
 def print_quote(username, items):
     print("BOOKSTORE QUOTE")
-    print("Customer: " + username)
-    subtotal = 0
-    for item in items:
-        book = database.get_book(item["book_id"])
-        line_total = book[2] * item["qty"]
-        subtotal = subtotal + line_total
-        print(book[1] + " x" + str(item["qty"]) + " = " + str(line_total))
-    tax = subtotal * TAX
-    print("Subtotal: " + str(round(subtotal, 2)))
-    print("Tax: " + str(round(tax, 2)))
-    print("Total: " + str(round(subtotal + tax, 2)))
+    _print_order_details(username, items)
     print("This quote is valid for 7 days.")
 
 
 def cancel_order(order_id):
     try:
         conn = database.get_connection()
-        conn.execute(f"UPDATE orders SET status = 'CANCELLED' WHERE id = {order_id}")
+        conn.execute("UPDATE orders SET status = 'CANCELLED' WHERE id = ?", (order_id,))
         conn.commit()
+        conn.close()
     except sqlite3.Error as e:
         print(f"Error cancelling order: {e}")
