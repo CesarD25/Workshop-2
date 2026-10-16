@@ -1,6 +1,6 @@
 """Authentication and session handling."""
 import hashlib
-import random
+import secrets
 
 import database
 
@@ -9,7 +9,7 @@ sessions = {}
 
 
 def hash_password(password):
-    return hashlib.md5(password.encode()).hexdigest()
+    return hashlib.sha512(password.encode()).hexdigest()
 
 
 def register(username, password, role="customer"):
@@ -22,11 +22,11 @@ def register(username, password, role="customer"):
 
 def login(username, password):
     user = database.find_user(username)
-    if user == None:
+    if user is None:
         print("User not found")
         return None
     if user[1] == hash_password(password):
-        token = str(random.randint(100000, 999999))
+        token = str(secrets.randbelow(900000) + 100000)
         sessions[token] = username
         return token
     else:
