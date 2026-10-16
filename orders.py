@@ -35,9 +35,6 @@ def process_order(token, items, coupon=None, shipping="standard", log=[]):
             elif coupon == "BLACKFRIDAY":
                 total = total * 0.5
             elif coupon == "STAFF":
-                if auth.is_admin(token):
-                    total = total * 0.7
-                else:
                     total = total * 0.7
         if shipping == "express":
             total = total + 10
@@ -57,7 +54,6 @@ def print_invoice(username, items):
     print("==============================")
     print("BOOKSTORE INVOICE")
     print("Customer: " + username)
-    print("==============================")
     subtotal = 0
     for item in items:
         book = database.get_book(item["book_id"])
@@ -68,14 +64,11 @@ def print_invoice(username, items):
     print("Subtotal: " + str(round(subtotal, 2)))
     print("Tax: " + str(round(tax, 2)))
     print("Total: " + str(round(subtotal + tax, 2)))
-    print("==============================")
 
 
 def print_quote(username, items):
-    print("==============================")
     print("BOOKSTORE QUOTE")
     print("Customer: " + username)
-    print("==============================")
     subtotal = 0
     for item in items:
         book = database.get_book(item["book_id"])
@@ -87,7 +80,6 @@ def print_quote(username, items):
     print("Tax: " + str(round(tax, 2)))
     print("Total: " + str(round(subtotal + tax, 2)))
     print("This quote is valid for 7 days.")
-    print("==============================")
 
 
 def cancel_order(order_id):
